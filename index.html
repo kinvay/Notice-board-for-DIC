@@ -147,7 +147,13 @@ function fmtDate(s){
   var p=s.split("-"),d=new Date(+p[0],+p[1]-1,+p[2]);
   return d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"});
 }
-function safeUrl(u){return /^https?:\/\//i.test(u)?u:""}
+function safeUrl(u){
+  u=(u||"").trim();
+  if(/^https?:\/\//i.test(u))return u;
+  /* accept links typed without https://, e.g. drive.google.com/... or www.site.in/... */
+  if(!/^[a-z][a-z0-9+.\-]*:/i.test(u)&&/^[^\s\/]+\.[^\s\/]+(\/\S*)?$/.test(u))return "https://"+u;
+  return "";
+}
 
 function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
 
