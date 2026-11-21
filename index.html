@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Team Notice Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;800&family=Noto+Sans+Gujarati:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F6F7F9; --card:#FFFFFF; --ink:#1B2A41; --muted:#5B6678; --line:#DDE2EA;
+  --blue:#1F4E8C; --amber:#E8A317; --amber-bg:#FFF6DD; --green:#2E7D5B;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1724; --card:#17212F; --ink:#E8EDF4; --muted:#9AA7BA; --line:#2A3649;
+    --blue:#7FB0F0; --amber:#F2B93B; --amber-bg:#2B2410; --green:#5CC49A; color-scheme:dark;
+  }
+}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:"Mukta","Noto Sans Gujarati",system-ui,sans-serif;font-size:17px;line-height:1.5;
+  padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.wrap{max-width:860px;margin:0 auto;padding:0 18px 48px}
+header{padding:28px 0 14px}
+h1{margin:0;font-size:clamp(1.9rem,5vw,2.8rem);font-weight:800;letter-spacing:-.01em;line-height:1.1}
+.sub{color:var(--muted);margin:6px 0 0}
+.today{margin:18px 0 8px;background:var(--amber-bg);border-left:6px solid var(--amber);padding:14px 18px;border-radius:4px}
+.today h2{margin:0 0 6px;font-size:1.1rem}
+.today ul{margin:0;padding-left:18px}
+.today li{margin:2px 0}
+.today.quiet{background:var(--card);border-left-color:var(--line);color:var(--muted)}
+.tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:18px 0 10px}
+.tools input{flex:1 1 220px;font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:.95rem;padding:6px 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--blue);border-color:var(--blue);color:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .chip[aria-pressed="true"]{color:#0F1724}}
+.chip:focus-visible,.tools input:focus-visible,a:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.status{color:var(--muted);font-size:.9rem;margin:4px 0 14px}
+.item{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:4px;padding:14px 18px;margin:0 0 12px}
+.item.high{border-left-color:var(--amber)}
+.item.new{border-left-color:var(--green)}
+.meta{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:.88rem;color:var(--muted)}
+.type{font-weight:600;color:var(--blue)}
+.flag{font-weight:600;color:#9A6700}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .flag{color:var(--amber)}}
+.item h3{margin:4px 0 4px;font-size:1.2rem;line-height:1.3}
+.item p{margin:0 0 8px;white-space:pre-line;max-width:70ch}
+.item a{color:var(--blue);font-weight:600}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+footer{color:var(--muted);font-size:.85rem;margin-top:30px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title">Team Notice Board</h1>
+    <p class="sub" id="sub">Circulars, notifications and deadlines. Updated daily.</p>
+  </header>
+
+  <section class="today" id="today" aria-live="polite"></section>
+
+  <div class="tools">
+    <input id="q" type="search" placeholder="Search notices" aria-label="Search notices">
+  </div>
+  <div class="chips" id="chips" role="group" aria-label="Filter by type"></div>
+  <p class="status" id="status"></p>
+  <main id="list"></main>
+  <footer>This page reads from a Google Sheet managed by the administrator and refreshes every 5 minutes.</footer>
+</div>
+
+<script>
+/* ===== SETTINGS: the only part you need to edit ===== */
+var SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHfvafZJkcCsJrtzMls0ZigGkDFLgCallqnSEE-ZBgkRvj4UI-cfrJG0_pinIx0Ou6_TTzOi7xOfSG/pub?output=csv";   // paste your "Publish to web" CSV link here
+var PAGE_TITLE    = "Team Notice Board";
+var PAGE_SUBTITLE = "Circulars, notifications and deadlines. Updated daily.";
+var REFRESH_MIN   = 5;
+/* ==================================================== */
+
+/* Shown only while SHEET_CSV_URL is empty, so you can preview the layout */
+var SAMPLE_CSV =
+"Date,Type,Title,Details,Link,Priority,Active\n" +
+todayStr()+",Notification,Sample: field visit reports due,Please submit this week's reports by 5 PM.,,High,Yes\n" +
+todayStr()+",Circular,Sample: revised reporting format,The new format applies from next Monday.,https://example.com/circular.pdf,Normal,Yes\n" +
+"2026-11-10,Event,Sample: review meeting,Review meeting at 11 AM in the conference hall.,,Normal,Yes\n" +
+"2026-10-30,Holiday,Sample: office closed,Office closed on account of the festival.,,Normal,Yes\n";
+
+var items = [], activeType = "All";
+var $ = function(id){return document.getElementById(id)};
+
+function pad(n){return n<10?"0"+n:""+n}
+function todayStr(){var d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())}
+
+function parseCSV(text){
+  var rows=[],row=[],f="",q=false,i,c;
+  text=text.replace(/^\uFEFF/,"");
+  for(i=0;i<text.length;i++){
+    c=text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){f+='"';i++} else q=false }
+      else f+=c;
+    } else if(c==='"') q=true;
+    else if(c===","){row.push(f);f=""}
+    else if(c==="\n"||c==="\r"){
+      if(c==="\r"&&text[i+1]==="\n")i++;
+      row.push(f);f="";
+      if(row.length>1||row[0]!=="")rows.push(row);
+      row=[];
+    } else f+=c;
+  }
+  if(f!==""||row.length){row.push(f);rows.push(row)}
+  return rows;
+}
+
+function normDate(s){
+  s=(s||"").trim();
+  var m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return m[1]+"-"+pad(+m[2])+"-"+pad(+m[3]);
+  m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);   /* DD/MM/YYYY */
+  if(m)return m[3]+"-"+pad(+m[2])+"-"+pad(+m[1]);
+  return "";
+}
+
+function toItems(rows){
+  if(!rows.length)return [];
+  var head=rows[0].map(function(h){return h.trim().toLowerCase()});
+  function col(n){return head.indexOf(n)}
+  var ci={date:col("date"),type:col("type"),title:col("title"),details:col("details"),link:col("link"),priority:col("priority"),active:col("active")};
+  var out=[];
+  rows.slice(1).forEach(function(r){
+    function g(k){return ci[k]>=0?(r[ci[k]]||"").trim():""}
+    var active=g("active").toLowerCase();
+    if(active==="no"||active==="n"||active==="false")return;
+    if(!g("title"))return;
+    out.push({date:normDate(g("date")),type:g("type")||"Notice",title:g("title"),
+      details:g("details"),link:g("link"),high:/^(high|urgent|important)$/i.test(g("priority"))});
+  });
+  out.sort(function(a,b){return a.date<b.date?1:a.date>b.date?-1:0});
+  return out;
+}
+
+function fmtDate(s){
+  if(!s)return "";
+  var p=s.split("-"),d=new Date(+p[0],+p[1]-1,+p[2]);
+  return d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"});
+}
+function safeUrl(u){return /^https?:\/\//i.test(u)?u:""}
+
+function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!==undefined)e.textContent=text;return e}
+
+function renderToday(){
+  var box=$("today"),t=todayStr();
+  var list=items.filter(function(i){return i.date===t});
+  box.innerHTML="";
+  if(!list.length){box.className="today quiet";box.appendChild(el("span","","No new notices today."));return}
+  box.className="today";
+  box.appendChild(el("h2","","Today, "+fmtDate(t)));
+  var ul=el("ul");
+  list.forEach(function(i){ul.appendChild(el("li","",i.title))});
+  box.appendChild(ul);
+}
+
+function renderChips(){
+  var types=["All"];
+  items.forEach(function(i){if(types.indexOf(i.type)<0)types.push(i.type)});
+  if(types.indexOf(activeType)<0)activeType="All";
+  var box=$("chips");box.innerHTML="";
+  types.forEach(function(t){
+    var b=el("button","chip",t);b.type="button";
+    b.setAttribute("aria-pressed",t===activeType);
+    b.onclick=function(){activeType=t;renderChips();renderList()};
+    box.appendChild(b);
+  });
+}
+
+function renderList(){
+  var q=$("q").value.trim().toLowerCase(),t=todayStr(),box=$("list");
+  var shown=items.filter(function(i){
+    if(activeType!=="All"&&i.type!==activeType)return false;
+    return !q||(i.title+" "+i.details+" "+i.type).toLowerCase().indexOf(q)>=0;
+  });
+  box.innerHTML="";
+  $("status").textContent=shown.length+" notice"+(shown.length===1?"":"s");
+  if(!shown.length){box.appendChild(el("div","empty","Nothing matches. Clear the search or pick another type."));return}
+  shown.forEach(function(i){
+    var card=el("article","item"+(i.high?" high":(i.date===t?" new":"")));
+    var meta=el("div","meta");
+    meta.appendChild(el("span","type",i.type));
+    if(i.date)meta.appendChild(el("span","",fmtDate(i.date)));
+    if(i.high)meta.appendChild(el("span","flag","Important"));
+    card.appendChild(meta);
+    card.appendChild(el("h3","",i.title));
+    if(i.details)card.appendChild(el("p","",i.details));
+    var u=safeUrl(i.link);
+    if(u){var a=el("a","","Open document");a.href=u;a.target="_blank";a.rel="noopener noreferrer";card.appendChild(a)}
+    box.appendChild(card);
+  });
+}
+
+function show(text){
+  items=toItems(parseCSV(text));
+  renderToday();renderChips();renderList();
+}
+
+function load(){
+  if(!SHEET_CSV_URL){
+    show(SAMPLE_CSV);
+    $("status").textContent="Preview mode: showing sample notices. Add your Sheet link in SETTINGS.";
+    return;
+  }
+  var url=SHEET_CSV_URL+(SHEET_CSV_URL.indexOf("?")>=0?"&":"?")+"t="+Date.now();
+  fetch(url,{cache:"no-store"})
+    .then(function(r){if(!r.ok)throw new Error(r.status);return r.text()})
+    .then(show)
+    .catch(function(){
+      if(!items.length){
+        $("list").innerHTML="";
+        $("list").appendChild(el("div","empty","Notices could not be loaded. Check your internet connection and refresh the page."));
+      }
+    });
+}
+
+document.title=PAGE_TITLE;
+$("title").textContent=PAGE_TITLE;
+$("sub").textContent=PAGE_SUBTITLE;
+$("q").addEventListener("input",renderList);
+load();
+setInterval(load,REFRESH_MIN*60*1000);
+</script>
+</body>
+</html>
